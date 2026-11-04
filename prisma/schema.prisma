@@ -1,0 +1,272 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model goal_required_skills {
+  goal_id            String         @db.Uuid
+  skill_id           String         @db.Uuid
+  target_proficiency Int
+  is_mandatory       Boolean        @default(true)
+  weight             Float          @default(1.0) @db.Real
+  learning_goals     learning_goals @relation(fields: [goal_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  skills             skills         @relation(fields: [skill_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([goal_id, skill_id])
+  @@index([goal_id], map: "idx_goal_required_skills_goal")
+  @@index([skill_id], map: "idx_goal_required_skills_skill")
+}
+
+model learning_goals {
+  id                   String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title                String                 @db.VarChar(200)
+  slug                 String                 @unique @db.VarChar(220)
+  description          String
+  target_career        String?                @db.VarChar(120)
+  difficulty_level     difficulty_tier        @default(BEGINNER)
+  is_active            Boolean                @default(true)
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  goal_required_skills goal_required_skills[]
+  user_active_goals    user_active_goals[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model learning_path_items {
+  id               String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  learning_path_id String                @db.Uuid
+  resource_id      String                @db.Uuid
+  sequence_order   Int
+  status           path_item_status_enum @default(LOCKED)
+  match_reason     String
+  calculated_score Decimal               @db.Decimal(5, 4)
+  learning_paths   learning_paths        @relation(fields: [learning_path_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  resources        resources             @relation(fields: [resource_id], references: [id], onUpdate: NoAction)
+
+  @@unique([learning_path_id, resource_id], map: "uq_path_resource")
+  @@unique([learning_path_id, sequence_order], map: "uq_path_sequence")
+  @@index([learning_path_id], map: "idx_learning_path_items_path")
+  @@index([resource_id], map: "idx_learning_path_items_resource")
+}
+
+model learning_paths {
+  id                  String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id             String                @db.Uuid
+  goal_id             String                @db.Uuid
+  title               String                @db.VarChar(255)
+  status              path_status_enum      @default(ACTIVE)
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime              @default(now()) @db.Timestamptz(6)
+  learning_path_items learning_path_items[]
+  user_active_goals   user_active_goals     @relation(fields: [user_id, goal_id], references: [user_id, goal_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_learning_paths_user_goal")
+
+  @@index([user_id, goal_id], map: "idx_learning_paths_user_goal")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model resource_prerequisite_skills {
+  resource_id         String    @db.Uuid
+  skill_id            String    @db.Uuid
+  minimum_proficiency Int
+  resources           resources @relation(fields: [resource_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  skills              skills    @relation(fields: [skill_id], references: [id], onUpdate: NoAction)
+
+  @@id([resource_id, skill_id])
+  @@index([resource_id], map: "idx_resource_prereq_resource")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model resource_skills {
+  resource_id    String    @db.Uuid
+  skill_id       String    @db.Uuid
+  coverage_level Int
+  resources      resources @relation(fields: [resource_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  skills         skills    @relation(fields: [skill_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([resource_id, skill_id])
+  @@index([resource_id], map: "idx_resource_skills_resource")
+  @@index([skill_id], map: "idx_resource_skills_skill")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model resources {
+  id                           String                         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  mongo_content_id             String?                        @db.VarChar(24)
+  title                        String                         @db.VarChar(255)
+  slug                         String                         @unique @db.VarChar(280)
+  primary_skill_id             String                         @db.Uuid
+  difficulty_level             difficulty_tier                @default(BEGINNER)
+  target_proficiency           Int
+  estimated_minutes            Int
+  resource_type                resource_type_enum             @default(COURSE)
+  average_rating               Decimal                        @default(0.00) @db.Decimal(3, 2)
+  total_reviews                Int                            @default(0)
+  status                       resource_status_enum           @default(PUBLISHED)
+  created_at                   DateTime                       @default(now()) @db.Timestamptz(6)
+  updated_at                   DateTime                       @default(now()) @db.Timestamptz(6)
+  learning_path_items          learning_path_items[]
+  resource_prerequisite_skills resource_prerequisite_skills[]
+  resource_skills              resource_skills[]
+  skills                       skills                         @relation(fields: [primary_skill_id], references: [id], onUpdate: NoAction)
+  user_resource_progress       user_resource_progress[]
+
+  @@index([difficulty_level], map: "idx_resources_difficulty")
+  @@index([primary_skill_id], map: "idx_resources_primary_skill")
+  @@index([slug], map: "idx_resources_slug")
+  @@index([status], map: "idx_resources_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model skill_prerequisites {
+  parent_skill_id                                    String @db.Uuid
+  child_skill_id                                     String @db.Uuid
+  required_parent_proficiency                        Int
+  skills_skill_prerequisites_child_skill_idToskills  skills @relation("skill_prerequisites_child_skill_idToskills", fields: [child_skill_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  skills_skill_prerequisites_parent_skill_idToskills skills @relation("skill_prerequisites_parent_skill_idToskills", fields: [parent_skill_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([parent_skill_id, child_skill_id])
+}
+
+model skills {
+  id                                                              String                         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name                                                            String                         @unique @db.VarChar(100)
+  slug                                                            String                         @unique @db.VarChar(120)
+  category                                                        String                         @db.VarChar(80)
+  description                                                     String?
+  created_at                                                      DateTime                       @default(now()) @db.Timestamptz(6)
+  updated_at                                                      DateTime                       @default(now()) @db.Timestamptz(6)
+  goal_required_skills                                            goal_required_skills[]
+  resource_prerequisite_skills                                    resource_prerequisite_skills[]
+  resource_skills                                                 resource_skills[]
+  resources                                                       resources[]
+  skill_prerequisites_skill_prerequisites_child_skill_idToskills  skill_prerequisites[]          @relation("skill_prerequisites_child_skill_idToskills")
+  skill_prerequisites_skill_prerequisites_parent_skill_idToskills skill_prerequisites[]          @relation("skill_prerequisites_parent_skill_idToskills")
+  user_skills                                                     user_skills[]
+
+  @@index([slug], map: "idx_skills_slug")
+}
+
+model user_active_goals {
+  id             String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id        String           @db.Uuid
+  goal_id        String           @db.Uuid
+  status         goal_status      @default(IN_PROGRESS)
+  started_at     DateTime         @default(now()) @db.Timestamptz(6)
+  target_date    DateTime?        @db.Timestamptz(6)
+  learning_paths learning_paths[]
+  learning_goals learning_goals   @relation(fields: [goal_id], references: [id], onUpdate: NoAction)
+  users          users            @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, goal_id], map: "uq_user_active_goal")
+  @@index([status], map: "idx_user_active_goals_status")
+  @@index([user_id], map: "idx_user_active_goals_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model user_resource_progress {
+  id                 String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id            String               @db.Uuid
+  resource_id        String               @db.Uuid
+  status             progress_status_enum @default(NOT_STARTED)
+  score              Decimal?             @db.Decimal(5, 2)
+  time_spent_minutes Int                  @default(0)
+  started_at         DateTime?            @default(now()) @db.Timestamptz(6)
+  completed_at       DateTime?            @db.Timestamptz(6)
+  resources          resources            @relation(fields: [resource_id], references: [id], onUpdate: NoAction)
+  users              users                @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, resource_id], map: "uq_user_resource_progress")
+  @@index([resource_id], map: "idx_user_resource_progress_resource")
+  @@index([status], map: "idx_user_resource_progress_status")
+  @@index([user_id], map: "idx_user_resource_progress_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model user_skills {
+  id                String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id           String       @db.Uuid
+  skill_id          String       @db.Uuid
+  proficiency_level Int
+  source            skill_source @default(SELF_ASSESSED)
+  updated_at        DateTime     @default(now()) @db.Timestamptz(6)
+  skills            skills       @relation(fields: [skill_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users             users        @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, skill_id], map: "uq_user_skill")
+  @@index([skill_id], map: "idx_user_skills_skill_id")
+  @@index([user_id], map: "idx_user_skills_user_id")
+}
+
+model users {
+  id                     String                   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email                  String                   @unique @db.VarChar(255)
+  password_hash          String                   @db.VarChar(255)
+  full_name              String                   @db.VarChar(150)
+  role                   user_role                @default(STUDENT)
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  user_active_goals      user_active_goals[]
+  user_resource_progress user_resource_progress[]
+  user_skills            user_skills[]
+
+  @@index([email], map: "idx_users_email")
+}
+
+enum difficulty_tier {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum goal_status {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum path_item_status_enum {
+  LOCKED
+  AVAILABLE
+}
+
+enum path_status_enum {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum progress_status_enum {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum resource_status_enum {
+  PUBLISHED
+  DRAFT
+  ARCHIVED
+}
+
+enum resource_type_enum {
+  COURSE
+  ARTICLE
+  VIDEO
+  DOCUMENTATION
+  PROJECT
+}
+
+enum skill_source {
+  SELF_ASSESSED
+  ASSESSMENT
+}
+
+enum user_role {
+  STUDENT
+  ADMIN
+}
