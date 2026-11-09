@@ -9,6 +9,8 @@
     "lint": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "db:init": "node scripts/run-init-db.mjs",
+    "db:alter-demo": "node scripts/run-sql.mjs scripts/alter-demo.sql",
+    "db:alter-undo": "node scripts/run-sql.mjs scripts/alter-demo-undo.sql",
     "db:seed": "tsx scripts/seed.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
