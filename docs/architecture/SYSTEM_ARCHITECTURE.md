@@ -22,7 +22,7 @@ DBMS/
 │       ├── RECOMMENDATION_AND_SEARCH.md
 │       └── API_SPECIFICATION.md
 ├── prisma/
-│   ├── schema.prisma              # 14-table PostgreSQL schema + pgvector definition
+│   ├── schema.prisma              # 13-table PostgreSQL schema
 │   ├── migrations/                # Version-controlled SQL migrations
 │   └── seed.ts                    # PostgreSQL seed script (users, skills, goals, resources)
 ├── scripts/
@@ -111,7 +111,7 @@ flowchart TD
 
     subgraph DataTier["Polyglot Database Tier"]
         subgraph PostgresEngine["PostgreSQL 16 + pgvector"]
-            PG_Relational["14-Table Relational Schema (3NF/BCNF)\nUsers, Skills, Prerequisites, Goals, Paths, Progress"]
+            PG_Relational["13-Table Relational Schema (3NF/BCNF)\nUsers, Skills, Prerequisites, Goals, Paths, Progress"]
             PG_FTS["Full-Text Search (tsvector/tsquery)\nPrimary keyword search implementation"]
             PG_Vector["pgvector Storage (Optional)\n(0..1 Resource Embeddings, HNSW Index)"]
             PG_Proc["Advanced SQL Engine\n(Views, Invariant Triggers, DAG Cycle Check, fn_complete_resource_in_path)"]
@@ -139,7 +139,7 @@ flowchart TD
 | Dimension | PostgreSQL 16 | MongoDB 7.0+ | pgvector Extension |
 | :--- | :--- | :--- | :--- |
 | **Role** | Relational Backbone & State of Record | Unstructured Educational Content Store | Vector Storage & Semantic Search |
-| **Data Stored** | 14 relational tables: Users, Skills, Goals, Prerequisites, Resource metadata, Path Sequencing, Authoritative Progress. | Single collection `resource_contents`: rich syllabi, chapter modules, reading notes, optional reviews. | Dense float vectors co-located with `resources`. Dimension depends on chosen model (768 for Gemini `text-embedding-004`, 1536 for OpenAI `text-embedding-3-small`). |
+| **Data Stored** | 13 relational tables: Users, Skills, Goals, Prerequisites, Resource metadata, Path Sequencing, Authoritative Progress. | Single collection `resource_contents`: rich syllabi, chapter modules, reading notes, optional reviews. | Dense float vectors co-located with `resources`. Dimension depends on chosen model (768 for Gemini `text-embedding-004`, 1536 for OpenAI `text-embedding-3-small`). |
 | **Academic Justification** | - Enforces **ACID** guarantees for student enrollments, paths, and progress.<br>- Guarantees referential integrity through foreign keys.<br>- Rigorous 3NF/BCNF normalization prevents duplicate mappings. | - Accommodates polymorphic and hierarchical educational formats (modules, chapters, checklists).<br>- Avoids complex 5-table JOINs for multi-section course syllabi.<br>- Allows schema flexibility without table migrations. | - Native inside PostgreSQL: avoids network latency to external vector DBs.<br>- **Optional**: The system uses PostgreSQL Full-Text Search (`tsvector`/`tsquery`) as the primary keyword search. pgvector enables optional semantic re-ranking when an embedding API is configured. |
 
 ---
