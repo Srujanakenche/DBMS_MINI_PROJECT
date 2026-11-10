@@ -21,7 +21,7 @@ export default function Login() {
           journey your own.
         </p>
         <div className="orbit">
-          ◈<small>One step closer.</small>
+          ◈
         </div>
         <span>• PERSONALIZED LEARNING, CURATED FOR YOU •</span>
       </section>

@@ -238,7 +238,7 @@ export default function Workspace() {
               <span className="eyebrow">MAKE ROOM FOR WHAT’S NEXT</span>
               <h1>
                 {tab === "Overview"
-                  ? `Hello, ${user.full_name.split(" ")[0]}. 👋`
+                  ? `Hello, ${user.full_name.split(" ")[0]}. `
                   : tab}
               </h1>
               <p>
