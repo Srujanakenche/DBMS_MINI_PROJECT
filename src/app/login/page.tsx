@@ -23,7 +23,7 @@ export default function Login() {
         <div className="orbit">
           ◈<small>One step closer.</small>
         </div>
-        <span>PERSONALIZED LEARNING · NO AI SUBSCRIPTIONS</span>
+        <span>• PERSONALIZED LEARNING, CURATED FOR YOU •</span>
       </section>
       <section className="auth-form">
         <span className="eyebrow">LET’S MAKE PROGRESS</span>
