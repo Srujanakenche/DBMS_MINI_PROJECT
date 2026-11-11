@@ -49,7 +49,13 @@ It is possible to register a student account. Registration never creates an admi
 4. Open a resource. Its details come from PostgreSQL and its notes come from MongoDB.
 5. Mark it complete. One database function records the progress, updates the skill level and unlocks the next item in a single transaction.
 6. Finish the whole path and check that **Progress** shows 100%. Search the **Resource library** for `SQL` or `React`.
-7. Sign out and sign in as admin. In **Admin studio**, create, edit or archive a resource and look at the counts.
+7. Sign in as admin. Open **Overview** for activity counts, **Students** for individual learning progress, or **Resources** to publish, edit, or archive lessons.
+
+## Editing lesson content in MongoDB
+
+In Compass, open the database in your `MONGODB_URI` and select `resource_contents`. Each document's `resource_id` matches `resources.id` in PostgreSQL. Edit `description`, `objectives`, and chapter `notes` for lesson text. Edit `practice.question`, `practice.options`, and `practice.explanation` for the quiz. The index in `practice.answer` starts at 0.
+
+For an existing installation, run `npm run db:backfill-practice` once after updating. It fills missing practice content from the original skill exercises and preserves existing edits. Save in Compass, then reopen the resource in Pathwise to see the change.
 
 Completing an item records that the student took part and self-assessed their skill. It is not a graded exam.
 
