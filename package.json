@@ -10,6 +10,7 @@
     "prisma:generate": "prisma generate",
     "db:init": "node scripts/run-init-db.mjs",
     "db:seed": "tsx scripts/seed.ts",
+    "db:backfill-practice": "tsx scripts/backfill-practice.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:e2e": "playwright test",

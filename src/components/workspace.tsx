@@ -9,10 +9,11 @@ export default function Workspace() {
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [query, setQuery] = useState(""),
-    [detail, setDetail] = useState<Row | null>(null),
-    [edit, setEdit] = useState<Row | null>(null);
+    [detail, setDetail] = useState<Row | null>(null);
   async function load(q = query) {
-    const r = await fetch("/api/platform?q=" + encodeURIComponent(q));
+    const r = await fetch("/api/platform?q=" + encodeURIComponent(q), {
+      cache: "no-store",
+    });
     const d = await r.json();
     if (!r.ok) throw Error(d.error);
     setData(d);
@@ -88,9 +89,6 @@ export default function Workspace() {
     ) ??
     lessonItems.find((item: Row) => item.progress !== "COMPLETED") ??
     lessonItems[0];
-  const lessonSkill = detail
-    ? skills.find((skill: Row) => skill.id === detail.resource.primary_skill_id)
-    : null;
   const total = paths.reduce(
       (s: number, p: Row) => s + Number(p.total_items),
       0,
@@ -109,7 +107,6 @@ export default function Workspace() {
     "My learning path",
     "Resource library",
     "Progress",
-    ...(user.role === "ADMIN" ? ["Admin studio"] : []),
   ];
   const pathCards = () =>
     paths.length ? (
@@ -199,6 +196,8 @@ export default function Workspace() {
               onClick={() => {
                 setTab(n);
                 setDetail(null);
+                if (n === "Resource library")
+                  load().catch((error) => setMessage(error.message));
               }}
             >
               <span>{["▦", "◎", "⚑", "↗", "▤", "◷", "◇"][i]}</span>
@@ -535,203 +534,6 @@ export default function Workspace() {
               {pathCards()}
             </>
           )}
-          {tab === "Admin studio" && (
-            <>
-              <div className="stats">
-                {Object.entries(data.analytics ?? {}).map(([k, v]) => (
-                  <div className="stat" key={k}>
-                    <strong>{String(v)}</strong>
-                    <p>{k}</p>
-                  </div>
-                ))}
-              </div>
-              <section className="panel">
-                <h2>{edit ? "Edit resource" : "Create a learning resource"}</h2>
-                <form
-                  key={edit?.id ?? "new"}
-                  className="admin-form"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    const f = new FormData(e.currentTarget);
-                    const ok = await act({
-                      action: "resource",
-                      id: edit?.id,
-                      title: f.get("title"),
-                      skillId: f.get("skillId"),
-                      level: Number(f.get("level")),
-                      minutes: Number(f.get("minutes")),
-                      difficulty: f.get("difficulty"),
-                      type: f.get("type"),
-                      status: f.get("status"),
-                      description: f.get("description"),
-                      notes: f.get("notes"),
-                      prerequisites: skills
-                        .map((s: Row) => ({
-                          skill_id: s.id,
-                          level: Number(f.get("prereq-" + s.id)),
-                        }))
-                        .filter((s: Row) => s.level > 0),
-                    });
-                    if (ok) setEdit(null);
-                  }}
-                >
-                  <label>
-                    Title
-                    <input name="title" required defaultValue={edit?.title} />
-                  </label>
-                  <label>
-                    Primary skill
-                    <select
-                      name="skillId"
-                      defaultValue={edit?.primary_skill_id}
-                    >
-                      {skills.map((s: Row) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Target proficiency
-                    <input
-                      name="level"
-                      type="number"
-                      min={1}
-                      max={5}
-                      defaultValue={edit?.target_proficiency ?? 3}
-                      required
-                    />
-                  </label>
-                  <label>
-                    Duration (minutes)
-                    <input
-                      name="minutes"
-                      type="number"
-                      min={1}
-                      defaultValue={edit?.estimated_minutes ?? 45}
-                      required
-                    />
-                  </label>
-                  <label>
-                    Difficulty
-                    <select
-                      name="difficulty"
-                      defaultValue={edit?.difficulty_level}
-                    >
-                      {["BEGINNER", "INTERMEDIATE", "ADVANCED"].map((x) => (
-                        <option key={x}>{x}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Type
-                    <select name="type" defaultValue={edit?.resource_type}>
-                      {[
-                        "COURSE",
-                        "ARTICLE",
-                        "VIDEO",
-                        "DOCUMENTATION",
-                        "PROJECT",
-                      ].map((x) => (
-                        <option key={x}>{x}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Status
-                    <select name="status" defaultValue={edit?.status}>
-                      {["PUBLISHED", "DRAFT", "ARCHIVED"].map((x) => (
-                        <option key={x}>{x}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Description
-                    <textarea
-                      name="description"
-                      minLength={10}
-                      required
-                      defaultValue={edit?.description}
-                    />
-                  </label>
-                  <label>
-                    Learning notes
-                    <textarea
-                      name="notes"
-                      minLength={10}
-                      required
-                      rows={8}
-                      defaultValue={edit?.notes}
-                    />
-                  </label>
-                  <fieldset className="prereq-fields">
-                    <legend>Prerequisite skills</legend>
-                    <p>
-                      What should a student know before starting this resource?
-                    </p>
-                    {skills.map((s: Row) => (
-                      <label key={s.id}>
-                        {s.name}
-                        <select
-                          name={"prereq-" + s.id}
-                          defaultValue={
-                            edit?.prerequisites?.find(
-                              (p: Row) => p.skill_id === s.id,
-                            )?.level ?? 0
-                          }
-                        >
-                          {[0, 1, 2, 3, 4, 5].map((n) => (
-                            <option key={n} value={n}>
-                              {n === 0 ? "Not required" : `Level ${n}`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ))}
-                  </fieldset>
-                  <button className="primary" disabled={busy}>
-                    Save resource
-                  </button>
-                  {edit && (
-                    <button type="button" onClick={() => setEdit(null)}>
-                      Cancel
-                    </button>
-                  )}
-                </form>
-              </section>
-              <section className="panel">
-                <h2>Manage catalogue</h2>
-                {resources.map((r: Row) => (
-                  <div className="management" key={r.id}>
-                    <strong>{r.title}</strong>
-                    <span>{r.status}</span>
-                    <button
-                      onClick={async () => {
-                        const res = await fetch(
-                          "/api/platform?resource=" + r.id,
-                        );
-                        const d = await res.json();
-                        if (!res.ok) {
-                          setMessage(d.error);
-                          return;
-                        }
-                        setEdit({
-                          ...r,
-                          description: d.content?.description,
-                          notes: d.content?.modules?.[0]?.chapters?.[0]?.notes,
-                          prerequisites: d.prerequisites ?? [],
-                        });
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
-                    >
-                      Edit / archive
-                    </button>
-                  </div>
-                ))}
-              </section>
-            </>
-          )}
           <footer>
             ◈ Pathwise <span>Built around your potential.</span>
           </footer>
@@ -784,7 +586,7 @@ export default function Workspace() {
                   ))}
                   <LessonPractice
                     key={detail.resource.id}
-                    slug={lessonSkill?.slug ?? ""}
+                    task={detail.content.practice}
                   />
                 </>
               ) : (

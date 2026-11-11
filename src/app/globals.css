@@ -951,3 +951,33 @@ footer {
     flex-wrap: wrap;
   }
 }
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.admin-table-wrap {
+  overflow-x: auto;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.admin-progress {
+  min-width: 150px;
+  margin: 8px 0;
+}
+.admin-progress progress {
+  display: block;
+  width: 100%;
+  margin: 5px 0;
+}

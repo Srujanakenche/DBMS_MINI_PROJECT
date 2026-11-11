@@ -1,4 +1,5 @@
 import { loadEnvConfig } from "@next/env";
+import { defaultPractice } from "../src/lib/practice-content";
 loadEnvConfig(process.cwd());
 async function main() {
   const { pool, transaction } = await import("../src/lib/db");
@@ -179,32 +180,35 @@ async function main() {
           const doc = await ResourceContent.findOneAndUpdate(
             { resource_id: r.id },
             {
-              description: `${level === 3 ? "Build your foundations in" : "Apply your knowledge of"} ${name.toLowerCase()} through explanations, worked ideas, and a practical exercise.`,
-              objectives: [
-                `Demonstrate ${name.toLowerCase()} at proficiency ${level}`,
-                "Complete the practice task and explain your approach",
-                "Check edge cases and reflect on your solution",
-              ],
-              modules: [
-                {
-                  title:
-                    level === 3
-                      ? "Foundations and guided practice"
-                      : "Applied project",
-                  chapters: [
-                    {
-                      title: level === 3 ? "Core concepts" : "Project brief",
-                      notes: notes[slug][level === 3 ? 0 : 1],
-                    },
-                    {
-                      title: "Check your understanding",
-                      notes:
-                        "Before marking this resource complete, finish the exercise in your own editor. Explain the key concepts without looking at the notes, test at least three examples, and describe one mistake you corrected. Completion records participation; it is not a verified examination score.",
-                    },
-                  ],
-                },
-              ],
-              tags: [slug, level === 3 ? "foundations" : "practice"],
+              $setOnInsert: {
+                practice: defaultPractice(slug),
+                description: `${level === 3 ? "Build your foundations in" : "Apply your knowledge of"} ${name.toLowerCase()} through explanations, worked ideas, and a practical exercise.`,
+                objectives: [
+                  `Demonstrate ${name.toLowerCase()} at proficiency ${level}`,
+                  "Complete the practice task and explain your approach",
+                  "Check edge cases and reflect on your solution",
+                ],
+                modules: [
+                  {
+                    title:
+                      level === 3
+                        ? "Foundations and guided practice"
+                        : "Applied project",
+                    chapters: [
+                      {
+                        title: level === 3 ? "Core concepts" : "Project brief",
+                        notes: notes[slug][level === 3 ? 0 : 1],
+                      },
+                      {
+                        title: "Check your understanding",
+                        notes:
+                          "Before marking this resource complete, finish the exercise in your own editor. Explain the key concepts without looking at the notes, test at least three examples, and describe one mistake you corrected. Completion records participation; it is not a verified examination score.",
+                      },
+                    ],
+                  },
+                ],
+                tags: [slug, level === 3 ? "foundations" : "practice"],
+              },
             },
             { upsert: true, returnDocument: "after" },
           );

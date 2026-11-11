@@ -1,4 +1,16 @@
 import mongoose from "mongoose";
+const practiceSchema = new mongoose.Schema(
+  {
+    task: String,
+    question: String,
+    options: [String],
+    answer: Number,
+    explanation: String,
+    correctFeedback: String,
+    retryFeedback: String,
+  },
+  { _id: false },
+);
 const schema = new mongoose.Schema(
   {
     resource_id: { type: String, required: true, unique: true },
@@ -6,6 +18,7 @@ const schema = new mongoose.Schema(
     objectives: [String],
     modules: [{ title: String, chapters: [{ title: String, notes: String }] }],
     tags: [String],
+    practice: practiceSchema,
   },
   { collection: "resource_contents", timestamps: true },
 );

@@ -1,26 +1,46 @@
 import { test, expect, request as apiRequest } from "@playwright/test";
+import { loadEnvConfig } from "@next/env";
+import mongoose from "mongoose";
 const base = "http://localhost:3000";
 test("responsive student overview and resource reading", async ({ page }) => {
-  await page.goto(base + '/login');
-  await page.screenshot({path:'screenshots/login.png',fullPage:true});
-  await page.getByLabel('Email address').fill('student@pathwise.local');
-  await page.getByLabel('Password').fill('LearnTogether!2026');
-  await page.getByRole('button',{name:'Sign in →'}).click();
-  await expect(page.getByRole('heading',{name:/Hello, Alex/})).toBeVisible();
-  await page.screenshot({path:'screenshots/student-overview.png',fullPage:true});
-  await page.setViewportSize({width:390,height:844});
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
-  await page.screenshot({path:'screenshots/mobile-overview.png',fullPage:true});
-  await page.getByRole('button',{name:'Resource library',exact:false}).click();
-  await page.getByRole('button',{name:'Explore resource'}).first().click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.getByRole('button',{name:'Choose a learning goal →',exact:true})).toBeVisible();
-  await page.getByRole('radio').first().check();
-  await page.getByRole('button',{name:'Check my answer',exact:true}).click();
-  await expect(page.locator('.practice-feedback')).toBeVisible();
-  await page.screenshot({path:'screenshots/mobile-resource.png',fullPage:true});
-  await page.getByRole('button',{name:'Choose a learning goal →',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Learning goals',exact:true})).toBeVisible();
+  await page.goto(base + "/login");
+  await page.screenshot({ path: "screenshots/login.png", fullPage: true });
+  await page.getByLabel("Email address").fill("student@pathwise.local");
+  await page.getByLabel("Password").fill("LearnTogether!2026");
+  await page.getByRole("button", { name: "Sign in →" }).click();
+  await expect(
+    page.getByRole("heading", { name: /Hello, Alex/ }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "screenshots/student-overview.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBeTruthy();
+  await page.screenshot({
+    path: "screenshots/mobile-overview.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Resource library", exact: false })
+    .click();
+  await page.getByRole("button", { name: "Explore resource" }).first().click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("radio").first().check();
+  await page
+    .getByRole("button", { name: "Check my answer", exact: true })
+    .click();
+  await expect(page.locator(".practice-feedback")).toBeVisible();
+  await page.screenshot({
+    path: "screenshots/mobile-resource.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Close resource" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 test("student workflow, role isolation, search, Mongo content, idempotent completion", async ({
   page,
@@ -91,11 +111,17 @@ test("student workflow, role isolation, search, Mongo content, idempotent comple
     .get(base + "/api/platform?q=SQL")
     .then((r) => r.json());
   expect(search.resources.length).toBeGreaterThan(0);
-  await page.getByRole('button',{name:'Read',exact:true}).first().click();
-  await expect(page.getByRole('button',{name:'Complete & unlock next →',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Complete & unlock next →',exact:true}).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByRole('heading',{name:'My learning path',exact:true})).toBeVisible();
+  await page.getByRole("button", { name: "Read", exact: true }).first().click();
+  await expect(
+    page.getByRole("button", { name: "Complete & unlock next →", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Complete & unlock next →", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "My learning path", exact: true }),
+  ).toBeVisible();
   const responses = await Promise.all([
     post({
       action: "complete",
@@ -161,56 +187,117 @@ test("student workflow, role isolation, search, Mongo content, idempotent comple
   ).toBe(400);
   await other.dispose();
 });
-test("admin can create, edit, and archive linked content", async ({ page }) => {
+test("admin publishes MongoDB content into the student library", async ({
+  page,
+}) => {
   await page.goto(base + "/login");
   await page.getByLabel("Email address").fill("admin@pathwise.local");
   await page.getByLabel("Password").fill("LearnTogether!2026");
   await page.getByRole("button", { name: "Sign in →" }).click();
   await expect(
-    page.getByRole("heading", { name: /Hello, Platform/ }),
+    page.getByRole("heading", { name: "Admin studio" }),
   ).toBeVisible();
-  const state = await page.request
-    .get(base + "/api/platform")
-    .then((r) => r.json());
-  expect(state.analytics.students).toBeTruthy();
-  const payload = {
-    action: "resource",
-    title: "Admin test " + Date.now(),
-    skillId: state.skills[0].id,
-    level: 3,
-    minutes: 30,
-    difficulty: "BEGINNER",
-    type: "ARTICLE",
-    status: "PUBLISHED",
-    description: "A practical testing resource.",
-    notes: "Read the notes, complete the exercise, and review your results.",
-    prerequisites: [],
-  };
-  expect(
-    (await page.request.post(base + "/api/platform", { data: payload })).ok(),
-  ).toBeTruthy();
-  const updated = await page.request
-    .get(base + "/api/platform")
-    .then((r) => r.json());
-  const r = updated.resources.find((r: any) => r.title === payload.title);
-  expect(r.mongo_content_id).toBeTruthy();
-  expect(
-    (
-      await page.request.post(base + "/api/platform", {
-        data: { ...payload, id: r.id, status: "ARCHIVED" },
-      })
-    ).ok(),
-  ).toBeTruthy();
-  const content = await page.request
-    .get(base + "/api/platform?resource=" + r.id)
-    .then((r) => r.json());
-  expect(content.resource.status).toBe("ARCHIVED");
-  expect(content.content.resource_id).toBe(r.id);
-  await page
-    .getByRole("button", { name: "Admin studio", exact: false })
-    .click();
-  await page.screenshot({
-    path: "screenshots/admin-studio.png",
-    fullPage: true,
+  await expect(
+    page.getByRole("button", { name: "Skill assessment" }),
+  ).toHaveCount(0);
+
+  await expect(page.getByText("Registered students")).toBeVisible();
+  await page.getByRole("button", { name: "Students", exact: true }).click();
+  await expect(
+    page.getByText("student@pathwise.local", { exact: true }),
+  ).toBeVisible();
+  const endpoint = base + "/api/platform";
+  const proxyRequest = await page.request.post(endpoint, {
+    headers: {
+      origin: "http://127.0.0.1:3000",
+      "sec-fetch-site": "same-origin",
+    },
+    data: { action: "unknown" },
   });
+  expect(await proxyRequest.json()).toEqual({ error: "Unknown action." });
+  const crossOrigin = await page.request.post(endpoint, {
+    headers: {
+      origin: "https://other.example",
+      "sec-fetch-site": "cross-site",
+    },
+    data: { action: "unknown" },
+  });
+  expect(crossOrigin.status()).toBe(403);
+  await page.getByRole("button", { name: "Resources", exact: true }).click();
+  const title = "Admin test " + Date.now();
+  const notes =
+    "Read the notes, complete the exercise, and review your results.";
+  await page.getByLabel("Title", { exact: true }).fill(title);
+  await page
+    .getByLabel("Description", { exact: true })
+    .fill("A practical testing resource.");
+  await page.getByLabel("Learning notes").fill(notes);
+  await page.getByRole("button", { name: "Publish resource" }).click();
+  await expect(page.getByRole("status")).toContainText("Published.");
+  const row = page.locator(".management").filter({ hasText: title });
+  await expect(row).toContainText("PUBLISHED");
+  const state = await page.request
+    .get(base + "/api/platform?q=" + encodeURIComponent(title))
+    .then((r) => r.json());
+  const resource = state.resources.find((r: any) => r.title === title);
+  expect(resource.mongo_content_id).toBeTruthy();
+  const editedQuestion = "Which part of this lesson did you practise?";
+  loadEnvConfig(process.cwd());
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri)
+    throw new Error("MONGODB_URI is required for the practice content check.");
+  const connection = await mongoose.createConnection(mongoUri).asPromise();
+  try {
+    const result = await connection
+      .collection("resource_contents")
+      .updateOne(
+        { resource_id: resource.id, "practice.question": { $exists: true } },
+        { $set: { "practice.question": editedQuestion } },
+      );
+    expect(result.modifiedCount).toBe(1);
+  } finally {
+    await connection.close();
+  }
+
+  const student = await page.context().browser()!.newPage();
+  try {
+    await student.goto(base + "/login");
+    await student.getByLabel("Email address").fill("student@pathwise.local");
+    await student.getByLabel("Password").fill("LearnTogether!2026");
+    await student.getByRole("button", { name: "Sign in →" }).click();
+    await student.getByRole("button", { name: "Resource library" }).click();
+    expect(
+      (await student.request.get(endpoint + "?admin=overview")).status(),
+    ).toBe(403);
+    await student
+      .getByRole("textbox", { name: "Search resources" })
+      .fill(title);
+    await student.getByRole("button", { name: "Search", exact: true }).click();
+    const card = student.locator(".resource").filter({ hasText: title });
+    await card.getByRole("button", { name: "Explore resource" }).click();
+    await expect(student.getByRole("dialog")).toContainText(notes);
+    await expect(student.getByRole("dialog")).toContainText(editedQuestion);
+    const detail = await student.request
+      .get(base + "/api/platform?resource=" + resource.id)
+      .then((r) => r.json());
+    expect(detail.content.resource_id).toBe(resource.id);
+
+    await row.getByRole("button", { name: "Edit / archive" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Edit resource", exact: true }),
+    ).toBeVisible();
+    await page.locator('select[name="status"]').selectOption("ARCHIVED");
+    await page.getByRole("button", { name: "Archive resource" }).click();
+    await expect(row).toContainText("ARCHIVED");
+    const archived = await page.request
+      .get(base + "/api/platform?resource=" + resource.id)
+      .then((r) => r.json());
+    expect(archived.content.practice.question).toBe(editedQuestion);
+    const results = await student.request
+      .get(base + "/api/platform?q=" + encodeURIComponent(title))
+      .then((r) => r.json());
+    expect(results.resources).toHaveLength(0);
+  } finally {
+    await student.close();
+  }
 });

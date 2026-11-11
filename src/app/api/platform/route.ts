@@ -4,6 +4,7 @@ import { z } from "zod";
 import { currentUser } from "@/lib/auth";
 import { pool, transaction } from "@/lib/db";
 import { mongo, ResourceContent } from "@/lib/mongo";
+import { defaultPractice } from "@/lib/practice-content";
 import { buildPlan, Candidate } from "@/lib/recommendation";
 export const dynamic = "force-dynamic";
 const uuid = z.string().uuid();
@@ -66,6 +67,62 @@ export async function GET(req: NextRequest) {
     const u = await currentUser();
     if (!u)
       return NextResponse.json({ error: "Please log in." }, { status: 401 });
+    if (req.nextUrl.searchParams.get("admin") === "overview") {
+      if (u.role !== "ADMIN") {
+        return NextResponse.json(
+          { error: "Admin access required." },
+          { status: 403 },
+        );
+      }
+      const [students, counts, activity] = await Promise.all([
+        pool.query(`
+          SELECT u.id, u.full_name, u.email,
+            COALESCE(goals.titles, ARRAY[]::text[]) AS goals,
+            COALESCE(paths.entries, '[]'::jsonb) AS paths,
+            progress.completed_count, progress.last_completed_at
+          FROM users u
+          LEFT JOIN LATERAL (
+            SELECT array_agg(g.title::text ORDER BY g.title) AS titles
+            FROM user_active_goals ug JOIN learning_goals g ON g.id = ug.goal_id
+            WHERE ug.user_id = u.id AND ug.status = 'IN_PROGRESS'
+          ) goals ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT jsonb_agg(to_jsonb(p) ORDER BY p.path_title, p.learning_path_id) AS entries
+            FROM v_learning_path_progress p
+            WHERE p.user_id = u.id AND p.path_status <> 'ARCHIVED'
+          ) paths ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT count(*)::int AS completed_count, max(completed_at) AS last_completed_at
+            FROM user_resource_progress
+            WHERE user_id = u.id AND status = 'COMPLETED'
+          ) progress ON TRUE
+          WHERE u.role = 'STUDENT'
+          ORDER BY u.full_name, u.email
+        `),
+        pool.query(`
+          SELECT count(*) FILTER (WHERE status = 'PUBLISHED')::int AS published,
+                 count(*) FILTER (WHERE status = 'DRAFT')::int AS drafts,
+                 count(*) FILTER (WHERE status = 'ARCHIVED')::int AS archived
+          FROM resources
+        `),
+        pool.query(`
+          SELECT u.full_name, r.title, p.completed_at
+          FROM user_resource_progress p
+          JOIN users u ON u.id = p.user_id
+          JOIN resources r ON r.id = p.resource_id
+          WHERE u.role = 'STUDENT' AND p.status = 'COMPLETED'
+          ORDER BY p.completed_at DESC NULLS LAST LIMIT 10
+        `),
+      ]);
+      return NextResponse.json(
+        {
+          students: students.rows,
+          counts: counts.rows[0],
+          activity: activity.rows,
+        },
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
     const q = (req.nextUrl.searchParams.get("q") ?? "").slice(0, 200);
     const rid = req.nextUrl.searchParams.get("resource");
     if (rid) {
@@ -143,11 +200,21 @@ export async function GET(req: NextRequest) {
 }
 export async function POST(req: NextRequest) {
   try {
-    if (
-      req.headers.get("origin") &&
-      req.headers.get("origin") !== req.nextUrl.origin
-    )
-      return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+    const origin = req.headers.get("origin");
+    if (origin) {
+      // Next can normalize the request URL to localhost while the browser uses
+      // a different host or a proxy. Fetch Metadata identifies same-origin
+      // browser requests independently of that server-side normalization.
+      const site = req.headers.get("sec-fetch-site");
+      const hostOrigin = `${req.nextUrl.protocol}//${req.headers.get("host")}`;
+      const allowed =
+        site !== "cross-site" &&
+        (origin === req.nextUrl.origin ||
+          origin === hostOrigin ||
+          (site === "same-origin" && /^https?:\/\/[^/]+$/.test(origin)));
+      if (!allowed)
+        return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+    }
     const body = await req.json();
     if (body.action === "register") {
       const a = account.parse(body);
@@ -279,18 +346,38 @@ export async function POST(req: NextRequest) {
       const previous = await ResourceContent.findOne({
         resource_id: id,
       }).lean();
+      const [firstModule, ...otherModules] = previous?.modules ?? [];
+      const [firstChapter, ...otherChapters] = firstModule?.chapters ?? [];
+      const skill = previous
+        ? null
+        : (
+            await pool.query<{ slug: string }>(
+              "SELECT slug FROM skills WHERE id=$1",
+              [r.skillId],
+            )
+          ).rows[0];
       const doc = await ResourceContent.findOneAndUpdate(
         { resource_id: id },
         {
-          description: r.description,
-          objectives: [`Reach proficiency ${r.level}`],
-          modules: [
-            {
-              title: r.title,
-              chapters: [{ title: "Learning notes", notes: r.notes }],
-            },
-          ],
-          tags: [],
+          $set: {
+            description: r.description,
+            modules: [
+              {
+                title: r.title,
+                ...firstModule,
+                chapters: [
+                  { title: "Learning notes", ...firstChapter, notes: r.notes },
+                  ...otherChapters,
+                ],
+              },
+              ...otherModules,
+            ],
+          },
+          $setOnInsert: {
+            objectives: [`Reach proficiency ${r.level}`],
+            tags: [],
+            practice: skill ? defaultPractice(skill.slug) : undefined,
+          },
         },
         { upsert: true, returnDocument: "after" },
       );
@@ -303,7 +390,7 @@ export async function POST(req: NextRequest) {
             )
           ).rows[0];
           await c.query(
-            "INSERT INTO resources(id,mongo_content_id,title,slug,primary_skill_id,target_proficiency,estimated_minutes,difficulty_level,resource_type,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(id) DO UPDATE SET title=$3,primary_skill_id=$5,target_proficiency=$6,estimated_minutes=$7,difficulty_level=$8,resource_type=$9,status=$10,updated_at=now()",
+            "INSERT INTO resources(id,mongo_content_id,title,slug,primary_skill_id,target_proficiency,estimated_minutes,difficulty_level,resource_type,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(id) DO UPDATE SET mongo_content_id=$2,title=$3,primary_skill_id=$5,target_proficiency=$6,estimated_minutes=$7,difficulty_level=$8,resource_type=$9,status=$10,updated_at=now()",
             [
               id,
               String(doc._id),
