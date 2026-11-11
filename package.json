@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:e2e": "playwright test",
-    "test:db": "node --env-file=.env.local scripts/test-database.mjs"
+    "test:db": "node --env-file=.env.local scripts/test-database.mjs",
+    "db:named-views": "node scripts/run-sql.mjs scripts/pgadmin-named-views.sql"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",

@@ -282,21 +282,51 @@ test("admin publishes MongoDB content into the student library", async ({
       .then((r) => r.json());
     expect(detail.content.resource_id).toBe(resource.id);
 
-    await row.getByRole("button", { name: "Edit / archive" }).click();
+    await row.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "Edit resource", exact: true }),
     ).toBeVisible();
-    await page.locator('select[name="status"]').selectOption("ARCHIVED");
-    await page.getByRole("button", { name: "Archive resource" }).click();
+    const editedDescription = "An updated description for the same resource.";
+    await page
+      .locator('textarea[name="description"]')
+      .fill(editedDescription, { timeout: 10000 });
+    await page
+      .getByRole("button", { name: "Publish resource", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Create a learning resource" }),
+    ).toBeVisible();
+    await row.getByRole("button", { name: "Archive", exact: true }).click();
     await expect(row).toContainText("ARCHIVED");
     const archived = await page.request
       .get(base + "/api/platform?resource=" + resource.id)
       .then((r) => r.json());
     expect(archived.content.practice.question).toBe(editedQuestion);
+    expect(archived.content.description).toBe(editedDescription);
     const results = await student.request
       .get(base + "/api/platform?q=" + encodeURIComponent(title))
       .then((r) => r.json());
     expect(results.resources).toHaveLength(0);
+    const denied = await student.request.post(endpoint, {
+      data: { action: "deleteResource", id: resource.id },
+    });
+    expect(denied.status()).toBe(403);
+    page.once("dialog", (dialog) => dialog.accept());
+    await row.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(row).toHaveCount(0);
+    expect(
+      (await page.request.get(endpoint + "?resource=" + resource.id)).status(),
+    ).toBe(404);
+    const afterDelete = await mongoose.createConnection(mongoUri).asPromise();
+    try {
+      expect(
+        await afterDelete
+          .collection("resource_contents")
+          .findOne({ resource_id: resource.id }),
+      ).toBeNull();
+    } finally {
+      await afterDelete.close();
+    }
   } finally {
     await student.close();
   }

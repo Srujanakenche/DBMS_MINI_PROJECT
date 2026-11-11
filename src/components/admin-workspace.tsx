@@ -70,21 +70,37 @@ export default function AdminWorkspace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (body.action === "deleteResource") {
+        setData(
+          (current) =>
+            current && {
+              ...current,
+              resources: current.resources.filter(
+                (resource: Row) => resource.id !== body.id,
+              ),
+            },
+        );
+      }
       setMessage(
-        body.status === "PUBLISHED"
-          ? "Published. Students can find this resource in the library."
-          : body.status === "ARCHIVED"
+        body.action === "deleteResource"
+          ? "Resource deleted."
+          : body.action === "archiveResource"
             ? "Resource archived."
-            : "Draft saved.",
+            : body.status === "PUBLISHED"
+              ? "Published. Students can find this resource in the library."
+              : body.status === "ARCHIVED"
+                ? "Resource archived."
+                : "Draft saved.",
       );
       try {
         await load();
       } catch {
-        setMessage("Resource saved. Refresh the page to reload the catalogue.");
+        setMessage("Change applied. Refresh the page to reload the catalogue.");
       }
       return true;
     } catch (error) {
       setMessage((error as Error).message);
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return false;
     } finally {
       setBusy(false);
@@ -425,12 +441,19 @@ export default function AdminWorkspace() {
           </section>
           <section className="panel">
             <h2>Manage catalogue</h2>
+            <p>
+              Edit updates the lesson. Archive hides it from student search and
+              keeps its history. Delete permanently removes it from both
+              databases if students haven’t used it.
+            </p>
             {resources.map((r: Row) => (
               <div className="management" key={r.id}>
                 <strong>{r.title}</strong>
                 <span>{r.status}</span>
                 <button
+                  disabled={busy}
                   onClick={async () => {
+                    setBusy(true);
                     try {
                       const d = await request("/api/platform?resource=" + r.id);
                       setStatus(d.resource.status);
@@ -443,10 +466,50 @@ export default function AdminWorkspace() {
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     } catch (error) {
                       setMessage((error as Error).message);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    } finally {
+                      setBusy(false);
                     }
                   }}
                 >
-                  Edit / archive
+                  Edit
+                </button>
+                {r.status !== "ARCHIVED" && (
+                  <button
+                    disabled={busy}
+                    onClick={async () => {
+                      if (
+                        (await act({ action: "archiveResource", id: r.id })) &&
+                        edit?.id === r.id
+                      ) {
+                        setEdit(null);
+                        setStatus("PUBLISHED");
+                      }
+                    }}
+                  >
+                    Archive
+                  </button>
+                )}
+                <button
+                  disabled={busy}
+                  className="resource-delete"
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        `Permanently delete “${r.title}” and its lesson content?`,
+                      )
+                    )
+                      return;
+                    if (
+                      (await act({ action: "deleteResource", id: r.id })) &&
+                      edit?.id === r.id
+                    ) {
+                      setEdit(null);
+                      setStatus("PUBLISHED");
+                    }
+                  }}
+                >
+                  Delete
                 </button>
               </div>
             ))}

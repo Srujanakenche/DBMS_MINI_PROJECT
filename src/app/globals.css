@@ -981,3 +981,6 @@ footer {
   width: 100%;
   margin: 5px 0;
 }
+.resource-delete {
+  color: #9b2828;
+}

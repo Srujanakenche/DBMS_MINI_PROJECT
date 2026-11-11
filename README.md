@@ -25,6 +25,7 @@ If  database installations used instead of Docker, edit `.env.local` with the co
 npm run db:init
 npm run prisma:generate
 npm run db:seed
+npm run db:named-views
 npm run dev
 ```
 
@@ -50,6 +51,12 @@ It is possible to register a student account. Registration never creates an admi
 5. Mark it complete. One database function records the progress, updates the skill level and unlocks the next item in a single transaction.
 6. Finish the whole path and check that **Progress** shows 100%. Search the **Resource library** for `SQL` or `React`.
 7. Sign in as admin. Open **Overview** for activity counts, **Students** for individual learning progress, or **Resources** to publish, edit, or archive lessons.
+
+## Viewing named records in pgAdmin
+
+Run `npm run db:named-views` once on an existing database. Refresh **Schemas → public → Views** in pgAdmin and open a view such as `v_user_skills_named` or `v_learning_path_progress_named` to see names alongside IDs.
+
+In **Admin Studio → Resources**, Edit changes the lesson, Archive hides it from student search, and Delete removes the PostgreSQL record and MongoDB content if no student path or progress references it.
 
 ## Editing lesson content in MongoDB
 

@@ -333,6 +333,66 @@ export async function POST(req: NextRequest) {
         uuid.parse(body.pathId),
         uuid.parse(body.resourceId),
       ]);
+    } else if (
+      body.action === "archiveResource" ||
+      body.action === "deleteResource"
+    ) {
+      if (u.role !== "ADMIN")
+        return NextResponse.json(
+          { error: "Administrator access required." },
+          { status: 403 },
+        );
+      const id = uuid.parse(body.id);
+      if (body.action === "archiveResource") {
+        const result = await pool.query(
+          "UPDATE resources SET status='ARCHIVED', updated_at=now() WHERE id=$1",
+          [id],
+        );
+        if (result.rowCount === 0)
+          return NextResponse.json(
+            { error: "Resource no longer exists." },
+            { status: 404 },
+          );
+      } else {
+        let removedContent: Awaited<
+          ReturnType<typeof ResourceContent.collection.findOneAndDelete>
+        > = null;
+        try {
+          await transaction(async (c) => {
+            // Check foreign keys before removing lesson content.
+            const result = await c.query("DELETE FROM resources WHERE id=$1", [
+              id,
+            ]);
+            if (result.rowCount === 0) return;
+            await mongo();
+            removedContent = await ResourceContent.collection.findOneAndDelete({
+              resource_id: id,
+            });
+          });
+        } catch (error) {
+          if (removedContent) {
+            const { rowCount } = await pool.query(
+              "SELECT id FROM resources WHERE id=$1",
+              [id],
+            );
+            if (rowCount)
+              await ResourceContent.collection.replaceOne(
+                { resource_id: id },
+                removedContent,
+                { upsert: true },
+              );
+          }
+          if ((error as { code?: string }).code === "23503")
+            return NextResponse.json(
+              {
+                error:
+                  "This resource is part of a student's learning path or progress. Archive it to keep that history.",
+              },
+              { status: 409 },
+            );
+          throw error;
+        }
+      }
     } else if (body.action === "resource") {
       if (u.role !== "ADMIN")
         return NextResponse.json(
@@ -341,54 +401,64 @@ export async function POST(req: NextRequest) {
         );
       const r = resource.parse(body);
       await mongo();
-      // Write document first, then publish metadata. Restore on SQL failure (cross-store compensation).
       const id = r.id ?? crypto.randomUUID();
-      const previous = await ResourceContent.findOne({
-        resource_id: id,
-      }).lean();
-      const [firstModule, ...otherModules] = previous?.modules ?? [];
-      const [firstChapter, ...otherChapters] = firstModule?.chapters ?? [];
-      const skill = previous
-        ? null
-        : (
-            await pool.query<{ slug: string }>(
-              "SELECT slug FROM skills WHERE id=$1",
-              [r.skillId],
-            )
-          ).rows[0];
-      const doc = await ResourceContent.findOneAndUpdate(
-        { resource_id: id },
-        {
-          $set: {
-            description: r.description,
-            modules: [
-              {
-                title: r.title,
-                ...firstModule,
-                chapters: [
-                  { title: "Learning notes", ...firstChapter, notes: r.notes },
-                  ...otherChapters,
-                ],
-              },
-              ...otherModules,
-            ],
-          },
-          $setOnInsert: {
-            objectives: [`Reach proficiency ${r.level}`],
-            tags: [],
-            practice: skill ? defaultPractice(skill.slug) : undefined,
-          },
-        },
-        { upsert: true, returnDocument: "after" },
-      );
+      let restoreContent: (() => Promise<unknown>) | undefined;
       try {
-        await transaction(async (c) => {
+        const saved = await transaction(async (c) => {
           const old = (
             await c.query(
               "SELECT primary_skill_id FROM resources WHERE id=$1 FOR UPDATE",
               [id],
             )
           ).rows[0];
+          // An editor opened before a deletion must not recreate the resource.
+          if (r.id && !old) return false;
+          const previous = await ResourceContent.findOne({
+            resource_id: id,
+          }).lean();
+          const [firstModule, ...otherModules] = previous?.modules ?? [];
+          const [firstChapter, ...otherChapters] = firstModule?.chapters ?? [];
+          const skill = previous
+            ? null
+            : (
+                await c.query<{ slug: string }>(
+                  "SELECT slug FROM skills WHERE id=$1",
+                  [r.skillId],
+                )
+              ).rows[0];
+          const doc = await ResourceContent.findOneAndUpdate(
+            { resource_id: id },
+            {
+              $set: {
+                description: r.description,
+                modules: [
+                  {
+                    title: r.title,
+                    ...firstModule,
+                    chapters: [
+                      {
+                        title: "Learning notes",
+                        ...firstChapter,
+                        notes: r.notes,
+                      },
+                      ...otherChapters,
+                    ],
+                  },
+                  ...otherModules,
+                ],
+              },
+              $setOnInsert: {
+                objectives: [`Reach proficiency ${r.level}`],
+                tags: [],
+                practice: skill ? defaultPractice(skill.slug) : undefined,
+              },
+            },
+            { upsert: true, returnDocument: "after" },
+          );
+          restoreContent = previous
+            ? () =>
+                ResourceContent.replaceOne({ resource_id: id }, previous).exec()
+            : () => ResourceContent.deleteOne({ resource_id: id }).exec();
           await c.query(
             "INSERT INTO resources(id,mongo_content_id,title,slug,primary_skill_id,target_proficiency,estimated_minutes,difficulty_level,resource_type,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(id) DO UPDATE SET mongo_content_id=$2,title=$3,primary_skill_id=$5,target_proficiency=$6,estimated_minutes=$7,difficulty_level=$8,resource_type=$9,status=$10,updated_at=now()",
             [
@@ -420,11 +490,15 @@ export async function POST(req: NextRequest) {
               "INSERT INTO resource_prerequisite_skills VALUES($1,$2,$3)",
               [id, p.skill_id, p.level],
             );
+          return true;
         });
+        if (!saved)
+          return NextResponse.json(
+            { error: "Resource no longer exists." },
+            { status: 404 },
+          );
       } catch (e) {
-        if (previous)
-          await ResourceContent.replaceOne({ resource_id: id }, previous);
-        else await ResourceContent.deleteOne({ resource_id: id });
+        await restoreContent?.();
         throw e;
       }
     } else
